@@ -22,28 +22,60 @@ pinned by `OPENCODE_VERSION`. Two things that cost time to rediscover:
 | Path | Contents |
 | --- | --- |
 | `~/.config/opencode/opencode.jsonc` | Global config, auto-loaded everywhere. Lives on the shared volume |
-| `~/.config/opencode/secrets/` | API keys, read with `{file:...}`. Never in git |
+| `~/.config/opencode/secrets/` | MCP keys, plus `integrations/<name>.key` for provider connections. Never in git |
+| `~/.config/opencode/plugins/keyfile` | Derives a connection per `integrations/*.key` at server start and on reload |
 | `~/.config/opencode/cli.json` | Terminal client config: keybinds, theme, scroll |
-| `~/.local/share/opencode/` | Sessions DB, tool output, logs. Per container |
+| `~/.local/share/opencode/` | Sessions DB, derived credentials, tool output, logs. Per container |
 | `<repo>/opencode.jsonc` | Project config, one per repository |
 
-## Credentials: the one rule
+## Credentials: files plus derived connections
 
-```jsonc
-"providers": {
-  // opencode/* and opencode-go/* are separate providers with separate catalogs.
-  "opencode":    { "settings": { "apiKey": "{file:~/.config/opencode/secrets/opencode.key}" } },
-  "opencode-go": { "settings": { "apiKey": "{file:~/.config/opencode/secrets/opencode.key}" } }
-}
+Keys live one file per connection, named after the integration:
+
+```text
+~/.config/opencode/secrets/
+├── kagi.key                       # consumed by the MCP server, not a connection
+└── integrations/
+    ├── opencode.key               # integration "opencode"
+    └── opencode-go.key            # integration "opencode-go"
 ```
 
-**`opencode auth list` must stay empty.** A credential saved by `/connect` outranks
-`settings.apiKey`, whether it sits in a row of `opencode.db` or in a legacy
-`~/.local/share/opencode/auth.json`. A stale stored key shadows the key file, and
-every request fails with `Invalid credential`. If an integration shows as stored,
-remove it with `opencode auth logout <provider>` and delete the legacy `auth.json`.
-For the same reason, never accept an in-editor login prompt: it is `/connect` by
-another name.
+The `keyfile` plugin scans `integrations/`, takes each `<name>.key` as the credential for
+integration `<name>`, and registers it as a connection in the container's own data store.
+Files that do not match an integration are skipped, so non-provider secrets can live beside
+them without noise.
+
+Two consequences worth knowing:
+
+- `opencode.jsonc` does not need `providers.*.settings.apiKey` at all. The plugin supplies the
+  credential, and it creates the connection that `/connect` and `/models` require. Keeping a
+  provider block is only useful as a fallback if the plugin has not run; if you keep one, point
+  it at the same file so the values cannot diverge.
+- The rule is no longer "`auth list` must stay empty". It is: exactly one `stored` entry per
+  provider, labelled `keyfile`, and never a manual `/connect`. A hand-made credential has the
+  same precedence but no link to the file, so it survives a rotation and shadows the new key.
+
+Rotation: replace the key file, then `opencode reload` (the plugin runs again) or rebuild the
+container.
+
+The plugin lives at `~/.config/opencode/plugins/keyfile`, symlinked to `plugins/keyfile` in
+this repository so a pulled update is deployed without copying. It compares the active
+connection with the file before writing, so repeated starts do not pile up credentials.
+
+The secrets directory defaults to `~/.config/opencode/secrets/integrations`. To point it
+somewhere else, load the plugin through the config instead of the auto-loaded directory:
+
+```jsonc
+"plugins": [
+  {
+    "package": "/home/dev/.config/opencode/plugin-pkgs/keyfile",
+    "options": { "secretsDir": "~/vault/opencode" }
+  }
+]
+```
+
+Move the plugin out of `plugins/` when you do that, or it loads twice: once from the
+directory and once from the config entry.
 
 ## Default model
 
@@ -60,6 +92,10 @@ Set the default in the global config if a fresh container should start on a spec
 
 Picking a model with `/models` writes to the per-container state, so that choice does not
 travel to the next project. The config value does.
+
+The `keyfile` plugin makes the pickers usable, so pinning a model is a convenience rather than
+a necessity: a fresh container starts on a known model instead of whatever the catalog offers
+first.
 
 ## Keybinds
 
