@@ -45,6 +45,22 @@ remove it with `opencode auth logout <provider>` and delete the legacy `auth.jso
 For the same reason, never accept an in-editor login prompt: it is `/connect` by
 another name.
 
+## Default model
+
+Model selection is stored per container in `~/.local/state/opencode`, so a container with a
+fresh `~/.local` starts with no remembered choice and falls back to whatever the catalog
+offers first. In practice that means a project can start on a model you did not pick, even
+though the provider and its models are configured correctly.
+
+Set the default in the global config if a fresh container should start on a specific model:
+
+```jsonc
+"model": "opencode-go/deepseek-v4.1-flash"
+```
+
+Picking a model with `/models` writes to the per-container state, so that choice does not
+travel to the next project. The config value does.
+
 ## Keybinds
 
 `cli.json` is read by the TUI at startup only. Home/End and PageUp/PageDown are
