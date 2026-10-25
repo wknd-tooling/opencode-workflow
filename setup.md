@@ -40,6 +40,13 @@ Keys live one file per connection, named after the integration:
     └── opencode-go.key            # integration "opencode-go"
 ```
 
+Keep every secret at mode `600`. It is good practice for key material, and the container user
+can still read them:
+
+```bash
+chmod 600 ~/.config/opencode/secrets/*.key ~/.config/opencode/secrets/integrations/*.key
+```
+
 The `keyfile` plugin scans `integrations/`, takes each `<name>.key` as the credential for
 integration `<name>`, and registers it as a connection in the container's own data store.
 Files that do not match an integration are skipped, so non-provider secrets can live beside
